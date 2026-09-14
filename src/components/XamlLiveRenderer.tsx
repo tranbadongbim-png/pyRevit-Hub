@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { RevitTheme, PyRevitTool } from '../types';
 import { WinFormsSimulator } from './WinFormsSimulator';
+import { WpfDataGrid } from './WpfDataGrid';
+import { WpfListBox } from './WpfListBox';
 import { 
   resolveWpfColor, 
   parseWpfThickness, 
@@ -46,15 +48,18 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
   const [previewEngine, setPreviewEngine] = useState<'wpf' | 'winforms'>('wpf');
   const [hoveredNodeInfo, setHoveredNodeInfo] = useState<string | null>(null);
   const [isWindowClosed, setIsWindowClosed] = useState(false);
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [windowOffset, setWindowOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0, offX: 0, offY: 0 });
   const [controlValues, setControlValues] = useState<Record<string, any>>({});
   const [activeTabs, setActiveTabs] = useState<Record<string, number>>({});
   const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
+  const [tableWidthPreset, setTableWidthPreset] = useState<'auto' | 'standard' | 'wide' | 'ultra'>('auto');
 
   useEffect(() => {
     setIsWindowClosed(false);
+    setIsWindowMaximized(false);
     setControlValues({});
     setActiveTabs({});
     setExpandedPanels({});
@@ -262,8 +267,34 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
     // 1. WINDOW / USERCONTROL / PAGE
     // ==========================================
     if (tagLower === 'window' || tagLower === 'usercontrol' || tagLower === 'page') {
-      const winWidth = getAttr('Width') ? `${getAttr('Width')}px` : '480px';
-      const winHeight = getAttr('Height') ? `${getAttr('Height')}px` : '470px';
+      const explicitWidth = getAttr('Width');
+      const explicitHeight = getAttr('Height');
+      const minW = getAttr('MinWidth');
+      const minH = getAttr('MinHeight');
+      const maxW = getAttr('MaxWidth');
+      const maxH = getAttr('MaxHeight');
+
+      let winWidth = explicitWidth ? `${explicitWidth}px` : '540px';
+      if (tableWidthPreset === 'standard') {
+        winWidth = '540px';
+      } else if (tableWidthPreset === 'wide') {
+        winWidth = '860px';
+      } else if (tableWidthPreset === 'ultra') {
+        winWidth = '1120px';
+      } else if (tableWidthPreset === 'auto') {
+        if (!explicitWidth) {
+          const lowerXaml = xamlCode.toLowerCase();
+          if (lowerXaml.includes('datagrid') || lowerXaml.includes('gridview') || lowerXaml.includes('listview')) {
+            winWidth = '780px';
+          }
+        }
+      }
+
+      let winHeight = explicitHeight ? `${explicitHeight}px` : '540px';
+      if (explicitHeight && parseInt(explicitHeight, 10) < 420 && (xamlCode.toLowerCase().includes('datagrid') || xamlCode.toLowerCase().includes('gridview'))) {
+        winHeight = '520px';
+      }
+
       const winTitle = getAttr('Title') || (tool ? `pyRevit • ${tool.title.replace('\\n', ' ')}` : 'WPF Window');
       const winStyle = getAttr('WindowStyle') || 'SingleBorderWindow';
       const allowsTransparency = getAttr('AllowsTransparency')?.toLowerCase() === 'true';
@@ -285,13 +316,20 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
         );
       }
 
+      const finalWinWidth = isWindowMaximized ? '98%' : winWidth;
+      const finalWinHeight = isWindowMaximized ? '96%' : winHeight;
+
       return (
         <div
           key="window-root"
           style={{
-            width: winWidth,
-            height: winHeight,
-            transform: `translate(${windowOffset.x}px, ${windowOffset.y}px)`,
+            width: finalWinWidth,
+            height: finalWinHeight,
+            minWidth: isWindowMaximized ? undefined : (minW ? `${minW}px` : undefined),
+            minHeight: isWindowMaximized ? undefined : (minH ? `${minH}px` : undefined),
+            maxWidth: isWindowMaximized ? '100%' : (maxW ? `${maxW}px` : undefined),
+            maxHeight: isWindowMaximized ? '100%' : (maxH ? `${maxH}px` : undefined),
+            transform: isWindowMaximized ? 'none' : `translate(${windowOffset.x}px, ${windowOffset.y}px)`,
             backgroundColor: isBorderless ? 'transparent' : theme === 'dark' ? '#1E1E24' : '#FFFFFF',
           }}
           className={`relative transition-shadow duration-200 select-none flex flex-col ${
@@ -302,8 +340,10 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
           {/* Windows Classic Titlebar if NOT WindowStyle="None" */}
           {!isBorderless && (
             <div
-              onMouseDown={handleMouseDown}
-              className={`h-8 px-3 flex items-center justify-between border-b cursor-move select-none shrink-0 ${
+              onMouseDown={isWindowMaximized ? undefined : handleMouseDown}
+              className={`h-8 px-3 flex items-center justify-between border-b ${
+                isWindowMaximized ? '' : 'cursor-move'
+              } select-none shrink-0 ${
                 theme === 'dark' ? 'bg-[#18181F] border-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-300 text-slate-800'
               }`}
             >
@@ -315,12 +355,21 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
                 <button
                   onClick={() => triggerAction('event', 'Window.WindowState = Minimized')}
                   className="w-6 h-6 flex items-center justify-center hover:bg-zinc-700/40 rounded text-xs"
+                  title="Thu nhỏ"
                 >
                   —
                 </button>
                 <button
+                  onClick={() => setIsWindowMaximized((prev) => !prev)}
+                  className="w-6 h-6 flex items-center justify-center hover:bg-zinc-700/40 rounded text-xs font-mono"
+                  title={isWindowMaximized ? 'Thu nhỏ cửa sổ' : 'Phóng to tối đa'}
+                >
+                  {isWindowMaximized ? '❐' : '▢'}
+                </button>
+                <button
                   onClick={() => setIsWindowClosed(true)}
                   className="w-6 h-6 flex items-center justify-center hover:bg-red-500 hover:text-white rounded text-xs"
+                  title="Đóng (Window.Close())"
                 >
                   ✕
                 </button>
@@ -329,7 +378,13 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
           )}
 
           {/* Window Children Area */}
-          <div className="flex-1 relative flex flex-col min-h-0 min-w-0">
+          <div 
+            style={{ 
+              padding: padding && padding !== '0px' ? padding : undefined,
+              boxSizing: 'border-box'
+            }}
+            className="flex-1 relative flex flex-col min-h-0 min-w-0 overflow-auto"
+          >
             {children.map((child, idx) => renderXmlElement(child, idx, true))}
           </div>
         </div>
@@ -358,12 +413,28 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
 
       const gridTemplateRows =
         rowDefs.length > 0
-          ? rowDefs.map((r) => parseGridLength(r.getAttribute('Height') || r.getAttribute('height'))).join(' ')
+          ? rowDefs
+              .map((r) =>
+                parseGridLength(
+                  r.getAttribute('Height') || r.getAttribute('height'),
+                  r.getAttribute('MinHeight') || r.getAttribute('minheight'),
+                  r.getAttribute('MaxHeight') || r.getAttribute('maxheight')
+                )
+              )
+              .join(' ')
           : undefined;
 
       const gridTemplateColumns =
         colDefs.length > 0
-          ? colDefs.map((c) => parseGridLength(c.getAttribute('Width') || c.getAttribute('width'))).join(' ')
+          ? colDefs
+              .map((c) =>
+                parseGridLength(
+                  c.getAttribute('Width') || c.getAttribute('width'),
+                  c.getAttribute('MinWidth') || c.getAttribute('minwidth'),
+                  c.getAttribute('MaxWidth') || c.getAttribute('maxwidth')
+                )
+              )
+              .join(' ')
           : undefined;
 
       const validChildren = children.filter((c) => {
@@ -378,6 +449,7 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
       });
 
       const isMultiCell = rowDefs.length > 0 || colDefs.length > 0;
+      const hasMargin = baseStyle.margin && baseStyle.margin !== '0px';
 
       return (
         <div
@@ -387,10 +459,12 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
             display: 'grid',
             gridTemplateRows,
             gridTemplateColumns,
-            width: isRootWindow ? '100%' : baseStyle.width || '100%',
+            width: isRootWindow 
+              ? (hasMargin ? 'auto' : '100%') 
+              : baseStyle.width || (hasMargin ? 'auto' : '100%'),
             height: isRootWindow ? '100%' : baseStyle.height || '100%',
           }}
-          className="min-h-0 min-w-0 w-full h-full"
+          className={`min-h-0 min-w-0 ${hasMargin ? '' : 'w-full'} h-full`}
           onMouseEnter={handleNodeHover}
         >
           {validChildren.map((child, cIdx) => {
@@ -424,6 +498,7 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
     // ==========================================
     if (tagLower === 'dockpanel') {
       const lastChildFill = getAttr('LastChildFill')?.toLowerCase() !== 'false';
+      const hasMargin = baseStyle.margin && baseStyle.margin !== '0px';
 
       return (
         <div
@@ -432,10 +507,10 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
             ...baseStyle,
             display: 'flex',
             flexDirection: 'column',
-            width: baseStyle.width || '100%',
+            width: baseStyle.width || (hasMargin ? 'auto' : '100%'),
             height: baseStyle.height || '100%',
           }}
-          className="min-w-0 min-h-0 w-full h-full relative"
+          className={`min-w-0 min-h-0 relative ${hasMargin ? '' : 'w-full'} h-full`}
           onMouseEnter={handleNodeHover}
         >
           {children.map((child, cIdx) => {
@@ -449,14 +524,75 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
             }
 
             const isLast = cIdx === children.length - 1;
-            const fillStyle: React.CSSProperties = isLast && lastChildFill ? { flex: 1, minHeight: 0 } : {};
+            const isBottom = dock.toLowerCase() === 'bottom';
+            const isTop = dock.toLowerCase() === 'top';
+
+            const fillStyle: React.CSSProperties = {
+              ...(isLast && lastChildFill ? { flex: 1, minHeight: 0 } : {}),
+              order: isBottom ? 99 : isTop ? 1 : 10,
+            };
 
             return (
-              <div key={cIdx} style={fillStyle} className="w-full">
+              <div key={cIdx} style={fillStyle} className="w-full shrink-0">
                 {renderXmlElement(child, cIdx)}
               </div>
             );
           })}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 3.1 STATUSBAR & STATUSBARITEM
+    // ==========================================
+    if (tagLower === 'statusbar') {
+      return (
+        <div
+          key={index}
+          style={{
+            minHeight: '28px',
+            padding: baseStyle.padding || '4px 12px',
+            backgroundColor: background !== 'transparent' ? background : theme === 'dark' ? '#14141A' : '#F1F5F9',
+            borderTop: `1px solid ${borderBrush !== 'transparent' ? borderBrush : theme === 'dark' ? '#272733' : '#E2E8F0'}`,
+            boxSizing: 'border-box',
+            ...baseStyle,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+          }}
+          className="shrink-0 text-xs select-none w-full gap-2"
+          onMouseEnter={handleNodeHover}
+        >
+          {children.map((child, cIdx) => renderXmlElement(child, cIdx))}
+        </div>
+      );
+    }
+
+    if (tagLower === 'statusbaritem') {
+      return (
+        <div
+          key={index}
+          style={{
+            ...baseStyle,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginLeft: hAlign === 'Right' ? 'auto' : undefined,
+            marginRight: hAlign === 'Left' ? 'auto' : undefined,
+            flexShrink: 0,
+          }}
+          className="shrink-0 text-xs"
+          onMouseEnter={handleNodeHover}
+        >
+          {children.length > 0
+            ? children.map((child, cIdx) => renderXmlElement(child, cIdx))
+            : (
+                <span style={{ color: foreground || (theme === 'dark' ? '#9CA3AF' : '#64748B') }}>
+                  {getAttr('Content') || element.textContent?.trim()}
+                </span>
+              )}
         </div>
       );
     }
@@ -554,6 +690,7 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
     if (tagLower === 'stackpanel') {
       const orientation = getAttr('Orientation') || 'Vertical';
       const isHoriz = orientation.toLowerCase() === 'horizontal';
+      const hasMargin = baseStyle.margin && baseStyle.margin !== '0px';
 
       return (
         <div
@@ -562,10 +699,16 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
             ...baseStyle,
             display: 'flex',
             flexDirection: isHoriz ? 'row' : 'column',
-            alignItems: isHoriz ? 'center' : 'stretch',
-            justifyContent: hAlign === 'Right' ? 'flex-end' : hAlign === 'Center' ? 'center' : 'flex-start',
+            alignItems: isHoriz
+              ? (vAlign === 'Center' ? 'center' : vAlign === 'Bottom' ? 'flex-end' : vAlign === 'Top' ? 'flex-start' : 'center')
+              : (hAlign === 'Center' ? 'center' : 'stretch'),
+            justifyContent: isHoriz
+              ? (hAlign === 'Right' ? 'flex-end' : hAlign === 'Center' ? 'center' : 'flex-start')
+              : (vAlign === 'Bottom' ? 'flex-end' : vAlign === 'Center' ? 'center' : 'flex-start'),
+            width: baseStyle.width || (hasMargin ? 'auto' : (isHoriz && hAlign === 'Right' ? 'auto' : '100%')),
+            gap: isHoriz ? '8px' : '4px',
           }}
-          className="relative min-w-0 w-full"
+          className={`relative min-w-0 ${isHoriz ? 'shrink-0' : (hasMargin ? '' : 'w-full')}`}
           onMouseEnter={handleNodeHover}
         >
           {children.map((child, cIdx) => renderXmlElement(child, cIdx))}
@@ -577,6 +720,11 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
     // 8. SCROLLVIEWER
     // ==========================================
     if (tagLower === 'scrollviewer') {
+      const hScroll = getAttr('HorizontalScrollBarVisibility');
+      const vScroll = getAttr('VerticalScrollBarVisibility');
+      const isHDisabled = hScroll?.toLowerCase() === 'disabled';
+      const isVDisabled = vScroll?.toLowerCase() === 'disabled';
+
       return (
         <div
           key={index}
@@ -584,8 +732,9 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
             ...baseStyle,
             flex: 1,
             minHeight: 0,
+            minWidth: 0,
           }}
-          className="overflow-y-auto overflow-x-hidden w-full h-full scrollbar-thin scrollbar-thumb-zinc-700"
+          className={`${isHDisabled ? 'overflow-x-hidden' : 'overflow-x-auto'} ${isVDisabled ? 'overflow-y-hidden' : 'overflow-y-auto'} w-full h-full scrollbar-thin scrollbar-thumb-zinc-700`}
           onMouseEnter={handleNodeHover}
         >
           {children.map((child, cIdx) => renderXmlElement(child, cIdx))}
@@ -671,72 +820,66 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
     }
 
     // ==========================================
-    // 11. DATAGRID
+    // 11. DATAGRID & LISTVIEW (With GridView Support)
     // ==========================================
-    if (tagLower === 'datagrid') {
-      // Find columns defined in <DataGrid.Columns>
-      let cols: { header: string; binding?: string }[] = [];
-      const colNodes = Array.from(element.getElementsByTagName('*')).filter((el) => {
-        const tn = (el.localName || el.tagName).toLowerCase();
-        return tn.endsWith('datagridtextcolumn') || tn.endsWith('datagridcheckboxcolumn');
-      });
+    if (tagLower === 'datagrid' || tagLower === 'listview') {
+      // Check if ListView has a GridView or if it's a simple list with ListViewItem
+      const hasGridView =
+        element.getElementsByTagName('GridView').length > 0 ||
+        Array.from(element.getElementsByTagName('*')).some((el) =>
+          (el.localName || el.tagName).toLowerCase().endsWith('gridview')
+        );
 
-      if (colNodes.length > 0) {
-        cols = colNodes.map((c) => ({
-          header: c.getAttribute('Header') || 'Cột',
-          binding: c.getAttribute('Binding') || '',
-        }));
-      } else {
-        cols = [
-          { header: 'ID' },
-          { header: 'Tên Sheet / View' },
-          { header: 'Số Hiệu' },
-          { header: 'Trạng Thái' },
-        ];
+      const hasOnlyItems =
+        !hasGridView &&
+        getChildElements(element).some((c) =>
+          (c.localName || c.tagName).toLowerCase().endsWith('listviewitem')
+        );
+
+      if (tagLower === 'listview' && hasOnlyItems) {
+        return (
+          <WpfListBox
+            key={index}
+            element={element}
+            name={name}
+            theme={theme}
+            baseStyle={baseStyle}
+            foreground={foreground}
+            onAction={triggerAction}
+            onHover={handleNodeHover}
+          />
+        );
       }
 
-      // Sample mock rows
-      const sampleRows = [
-        ['001', 'A101 - Mặt Bằng Kiến Trúc Tầng 1', 'KT-01', 'Đã duyệt'],
-        ['002', 'A102 - Mặt Bằng Kiến Trúc Tầng 2', 'KT-02', 'Đang sửa'],
-        ['003', 'S201 - Mặt Bằng Kết Cấu Dầm Sàn', 'KC-01', 'Hoàn thành'],
-      ];
-
       return (
-        <div
+        <WpfDataGrid
           key={index}
-          style={baseStyle}
-          className="border border-zinc-700/80 rounded-xl overflow-hidden text-xs w-full my-2 bg-black/20"
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-zinc-800/90 text-zinc-300 font-semibold border-b border-zinc-700">
-                  <th className="p-2 w-8 text-center">✓</th>
-                  {cols.map((col, cIdx) => (
-                    <th key={cIdx} className="p-2 border-r border-zinc-700/60 last:border-0 font-medium">
-                      {col.header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {sampleRows.map((row, rIdx) => (
-                  <tr key={rIdx} className="hover:bg-sky-500/10 transition-colors cursor-pointer">
-                    <td className="p-2 text-center">
-                      <input type="checkbox" defaultChecked={rIdx === 0} className="rounded accent-sky-500" />
-                    </td>
-                    {cols.map((_, cIdx) => (
-                      <td key={cIdx} className="p-2 text-zinc-300 font-mono text-[11px]">
-                        {row[cIdx] || `Dữ liệu #${rIdx + 1}`}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          element={element}
+          name={name}
+          theme={theme}
+          baseStyle={baseStyle}
+          foreground={foreground}
+          onAction={triggerAction}
+          onHover={handleNodeHover}
+        />
+      );
+    }
+
+    // ==========================================
+    // 11b. LISTBOX
+    // ==========================================
+    if (tagLower === 'listbox') {
+      return (
+        <WpfListBox
+          key={index}
+          element={element}
+          name={name}
+          theme={theme}
+          baseStyle={baseStyle}
+          foreground={foreground}
+          onAction={triggerAction}
+          onHover={handleNodeHover}
+        />
       );
     }
 
@@ -841,10 +984,24 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
         triggerAction('alert', `pyRevit: Thực thi sự kiện cho [${btnLabel}]`);
       };
 
+      const hasCustomBg = baseStyle.backgroundColor && baseStyle.backgroundColor !== 'transparent';
+      const defaultBg = theme === 'dark' ? '#2A2A36' : '#F1F3F5';
+      const defaultBorder = theme === 'dark' ? '1px solid #404052' : '1px solid #CBD5E1';
+      const defaultText = theme === 'dark' ? '#F3F4F6' : '#1E293B';
+
       return (
         <button
           key={index}
           style={{
+            minHeight: '26px',
+            padding: baseStyle.padding || '4px 14px',
+            backgroundColor: hasCustomBg ? baseStyle.backgroundColor : defaultBg,
+            border: baseStyle.borderColor ? undefined : defaultBorder,
+            color: foreground || defaultText,
+            borderRadius: baseStyle.borderRadius || '5px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            boxSizing: 'border-box',
             ...baseStyle,
             display: 'inline-flex',
             alignItems: 'center',
@@ -852,11 +1009,11 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
             cursor: 'pointer',
           }}
           onClick={handleClick}
-          className="font-medium transition-all active:scale-95 hover:opacity-90 rounded-xl select-none shadow-sm"
+          className="font-medium transition-all active:scale-95 hover:opacity-90 select-none shadow-sm shrink-0 text-xs"
           onMouseEnter={handleNodeHover}
         >
           {content ? (
-            <span style={{ color: foreground }}>{content}</span>
+            <span style={{ color: foreground || defaultText, whiteSpace: 'nowrap' }}>{content}</span>
           ) : (
             children.map((child, cIdx) => renderXmlElement(child, cIdx))
           )}
@@ -1117,6 +1274,57 @@ export const XamlLiveRenderer: React.FC<XamlLiveRendererProps> = ({
               {theme === 'dark' ? <Moon className="w-3.5 h-3.5 text-sky-400" /> : <Sun className="w-3.5 h-3.5 text-amber-400" />}
               <span className="text-[11px] font-medium">Revit {theme === 'dark' ? 'Dark' : 'Light'}</span>
             </button>
+          )}
+
+          {/* Window / Table Width Presets */}
+          {previewEngine === 'wpf' && (
+            <div className="flex items-center bg-zinc-900 border border-zinc-700/80 rounded-lg p-0.5 text-[11px] ml-1">
+              <span className="px-1.5 text-[10px] text-zinc-400 font-medium">Khổ:</span>
+              <button
+                onClick={() => setTableWidthPreset('auto')}
+                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                  tableWidthPreset === 'auto'
+                    ? 'bg-zinc-700 text-white shadow-sm font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+                title="Kích thước tự động theo XAML"
+              >
+                Gốc
+              </button>
+              <button
+                onClick={() => setTableWidthPreset('standard')}
+                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                  tableWidthPreset === 'standard'
+                    ? 'bg-zinc-700 text-white shadow-sm font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+                title="Chuẩn (540px)"
+              >
+                540px
+              </button>
+              <button
+                onClick={() => setTableWidthPreset('wide')}
+                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                  tableWidthPreset === 'wide'
+                    ? 'bg-sky-500 text-white shadow-sm font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+                title="Khổ rộng tối ưu cho DataGrid & Bảng lớn (860px)"
+              >
+                Rộng (860px)
+              </button>
+              <button
+                onClick={() => setTableWidthPreset('ultra')}
+                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                  tableWidthPreset === 'ultra'
+                    ? 'bg-sky-500 text-white shadow-sm font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+                title="Siêu rộng cho bảng nhiều cột (1120px)"
+              >
+                1120px
+              </button>
+            </div>
           )}
         </div>
 

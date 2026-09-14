@@ -15,11 +15,13 @@ import {
   Moon, 
   FilePlus,
   Save,
-  HelpCircle
+  HelpCircle,
+  FolderOpen
 } from 'lucide-react';
 import { PyRevitTool, PyRevitToolFile, RevitTheme, ConsoleLogItem } from '../types';
 import { XamlLiveRenderer } from './XamlLiveRenderer';
 import { RevitWorkspaceFrame } from './RevitWorkspaceFrame';
+import { LocalFilesModal } from './LocalFilesModal';
 
 interface ToolEditorProps {
   tool: PyRevitTool;
@@ -47,6 +49,7 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({
   );
   const [viewMode, setViewMode] = useState<'split' | 'code' | 'preview' | 'revit'>('split');
   const [copied, setCopied] = useState(false);
+  const [isLocalFilesModalOpen, setIsLocalFilesModalOpen] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLogItem[]>([
     {
       id: 'init-1',
@@ -235,6 +238,16 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({
             <span className="hidden sm:inline">Theme {theme === 'dark' ? 'Dark' : 'Light'}</span>
           </button>
 
+          {/* Local files guide button */}
+          <button
+            onClick={() => setIsLocalFilesModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold shadow-sm transition-all active:scale-95"
+            title="Xem vị trí tệp script.py, ui.xaml trên ổ cứng máy tính & cách mở"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+            <span>📁 Vị Trí File Máy</span>
+          </button>
+
           {/* Download button */}
           <button
             onClick={() => onDownloadZip(tool)}
@@ -289,6 +302,14 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({
 
               <div className="flex items-center gap-1 shrink-0">
                 <button
+                  onClick={() => setIsLocalFilesModalOpen(true)}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs border border-amber-500/30 transition-colors"
+                  title="Xem đường dẫn file thực tế trên máy tính"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] hidden sm:inline">Vị trí file</span>
+                </button>
+                <button
                   onClick={handleCopyCode}
                   className="flex items-center gap-1 px-2 py-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
                   title="Sao chép nội dung file"
@@ -297,6 +318,22 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({
                   <span className="text-[11px]">{copied ? 'Đã chép' : 'Sao chép'}</span>
                 </button>
               </div>
+            </div>
+
+            {/* Path indicator banner */}
+            <div className="h-7 px-3 bg-[#0c0c0f] border-b border-zinc-800 flex items-center justify-between text-[11px] font-mono text-zinc-400">
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="text-zinc-600">Đích máy:</span>
+                <span className="text-sky-400 truncate">
+                  %appdata%\pyRevit\Extensions\BIMHanoi.extension\{tool.extensionTab}.tab\{tool.panel}.panel\{tool.name}\{activeFile?.name}
+                </span>
+              </div>
+              <button
+                onClick={() => setIsLocalFilesModalOpen(true)}
+                className="text-[10px] text-amber-400 hover:text-amber-300 hover:underline shrink-0 ml-2"
+              >
+                Mở lệnh Explorer →
+              </button>
             </div>
 
             {/* Quick snippet tools for XAML */}
@@ -461,6 +498,14 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal hướng dẫn vị trí file trên máy tính & lệnh mở Explorer */}
+      <LocalFilesModal
+        isOpen={isLocalFilesModalOpen}
+        onClose={() => setIsLocalFilesModalOpen(false)}
+        tool={tool}
+        activeFileName={activeFile?.name}
+      />
     </div>
   );
 };

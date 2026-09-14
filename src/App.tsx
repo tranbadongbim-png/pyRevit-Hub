@@ -10,27 +10,27 @@ import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { StorageManagerModal } from './components/StorageManagerModal';
 import { downloadToolAsZip, downloadFullExtensionBundle } from './utils/pyrevitPackager';
 
-// Upgraded to v3 to ensure users automatically get the newest tools & XAML fixes without cache interference
-const CURRENT_STORAGE_KEY = 'pyrevit_tools_library_v3';
+// Upgraded to v4 to ensure users get the new BIMSheetDataManager and high-accuracy DataGrid rendering
+const CURRENT_STORAGE_KEY = 'pyrevit_tools_library_v4';
 
 export default function App() {
   const [tools, setTools] = useState<PyRevitTool[]>(() => {
     try {
-      // 1. Check v3
-      const savedV3 = localStorage.getItem(CURRENT_STORAGE_KEY);
-      if (savedV3) {
-        const parsed = JSON.parse(savedV3);
+      // 1. Check v4
+      const savedV4 = localStorage.getItem(CURRENT_STORAGE_KEY);
+      if (savedV4) {
+        const parsed = JSON.parse(savedV4);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
       }
 
-      // 2. Migration from v2 if exists (preserve user custom tools)
-      const savedV2 = localStorage.getItem('pyrevit_tools_library_v2');
-      if (savedV2) {
-        const parsedV2 = JSON.parse(savedV2);
-        if (Array.isArray(parsedV2)) {
-          const customOnly = parsedV2.filter((t: PyRevitTool) => t.isCustom);
+      // 2. Migration from v3/v2 if exists (preserve user custom tools)
+      const savedV3 = localStorage.getItem('pyrevit_tools_library_v3') || localStorage.getItem('pyrevit_tools_library_v2');
+      if (savedV3) {
+        const parsedV3 = JSON.parse(savedV3);
+        if (Array.isArray(parsedV3)) {
+          const customOnly = parsedV3.filter((t: PyRevitTool) => t.isCustom);
           if (customOnly.length > 0) {
             return [...DEFAULT_TOOLS, ...customOnly];
           }
