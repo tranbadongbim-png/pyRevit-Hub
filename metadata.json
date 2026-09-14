@@ -1,0 +1,6 @@
+{
+  "name": "pyRevit Tool Hub & XAML Live Studio",
+  "description": "Nền tảng quản lý kho mã nguồn pyRevit tools chuyên nghiệp với trình biên dịch & xem trước giao diện WPF XAML thời gian thực, đồng bộ Revit Dark Mode.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
